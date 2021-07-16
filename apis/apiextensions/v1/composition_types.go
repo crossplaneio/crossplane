@@ -24,7 +24,7 @@ import (
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 )
 
-// CompositionSpec specifies the desired state of the definition.
+// CompositionSpec specifies the desired state of the composition.
 type CompositionSpec struct {
 	// CompositeTypeRef specifies the type of composite resource that this
 	// composition is compatible with.
