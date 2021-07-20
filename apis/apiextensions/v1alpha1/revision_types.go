@@ -14,18 +14,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1
+package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 )
 
-// CompositionSpec specifies desired state of a composition.
-type CompositionSpec struct {
+// CompositionRevisionSpec specifies the desired state of the composition
+// revision.
+type CompositionRevisionSpec struct {
 	// CompositeTypeRef specifies the type of composite resource that this
 	// composition is compatible with.
 	// +immutable
@@ -138,6 +137,193 @@ type ReadinessCheck struct {
 	MatchInteger int64 `json:"matchInteger,omitempty"`
 }
 
+// A PatchType is a type of patch.
+type PatchType string
+
+// Patch types.
+const (
+	PatchTypeFromCompositeFieldPath PatchType = "FromCompositeFieldPath" // Default
+	PatchTypePatchSet               PatchType = "PatchSet"
+	PatchTypeToCompositeFieldPath   PatchType = "ToCompositeFieldPath"
+	PatchTypeCombineFromComposite   PatchType = "CombineFromComposite"
+	PatchTypeCombineToComposite     PatchType = "CombineToComposite"
+)
+
+// Patch objects are applied between composite and composed resources. Their
+// behaviour depends on the Type selected. The default Type,
+// FromCompositeFieldPath, copies a value from the composite resource to
+// the composed resource, applying any defined transformers.
+type Patch struct {
+	// Type sets the patching behaviour to be used. Each patch type may require
+	// its' own fields to be set on the Patch object.
+	// +optional
+	// +kubebuilder:validation:Enum=FromCompositeFieldPath;PatchSet;ToCompositeFieldPath;CombineFromComposite;CombineToComposite
+	// +kubebuilder:default=FromCompositeFieldPath
+	Type PatchType `json:"type,omitempty"`
+
+	// FromFieldPath is the path of the field on the resource whose value is
+	// to be used as input. Required when type is FromCompositeFieldPath or
+	// ToCompositeFieldPath.
+	// +optional
+	FromFieldPath *string `json:"fromFieldPath,omitempty"`
+
+	// Combine is the patch configuration for a CombineFromComposite or
+	// CombineToComposite patch.
+	Combine *Combine `json:"combine,omitempty"`
+
+	// ToFieldPath is the path of the field on the resource whose value will
+	// be changed with the result of transforms. Leave empty if you'd like to
+	// propagate to the same path as fromFieldPath.
+	// +optional
+	ToFieldPath *string `json:"toFieldPath,omitempty"`
+
+	// PatchSetName to include patches from. Required when type is PatchSet.
+	// +optional
+	PatchSetName *string `json:"patchSetName,omitempty"`
+
+	// Transforms are the list of functions that are used as a FIFO pipe for the
+	// input to be transformed.
+	// +optional
+	Transforms []Transform `json:"transforms,omitempty"`
+
+	// Policy configures the specifics of patching behaviour.
+	// +optional
+	Policy *PatchPolicy `json:"policy,omitempty"`
+}
+
+// A FromFieldPathPolicy determines how to patch from a field path.
+type FromFieldPathPolicy string
+
+// FromFieldPath patch policies.
+const (
+	FromFieldPathPolicyOptional FromFieldPathPolicy = "Optional"
+	FromFieldPathPolicyRequired FromFieldPathPolicy = "Required"
+)
+
+// A PatchPolicy configures the specifics of patching behaviour.
+type PatchPolicy struct {
+	// FromFieldPath specifies how to patch from a field path. The default is
+	// 'Optional', which means the patch will be a no-op if the specified
+	// fromFieldPath does not exist. Use 'Required' if the patch should fail if
+	// the specified path does not exist.
+	// +kubebuilder:validation:Enum=Optional;Required
+	// +optional
+	FromFieldPath *FromFieldPathPolicy `json:"fromFieldPath,omitempty"`
+}
+
+// A Combine configures a patch that combines more than
+// one input field into a single output field.
+type Combine struct {
+	// Variables are the list of variables whose values will be retrieved and
+	// combined.
+	// +kubebuilder:validation:MinItems=1
+	Variables []CombineVariable `json:"variables"`
+
+	// Strategy defines the strategy to use to combine the input variable values.
+	// Currently only string is supported.
+	// +kubebuilder:validation:Enum=string
+	Strategy CombineStrategy `json:"strategy"`
+
+	// String declares that input variables should be combined into a single
+	// string, using the relevant settings for formatting purposes.
+	// +optional
+	String *StringCombine `json:"string,omitempty"`
+}
+
+// A CombineVariable defines the source of a value that is combined with
+// others to form and patch an output value. Currently, this only supports
+// retrieving values from a field path.
+type CombineVariable struct {
+	// FromFieldPath is the path of the field on the source whose value is
+	// to be used as input.
+	FromFieldPath string `json:"fromFieldPath"`
+}
+
+// A CombineStrategy determines what strategy will be applied to combine
+// variables.
+type CombineStrategy string
+
+// CombineStrategy strategy definitions.
+const (
+	CombineStrategyString CombineStrategy = "string"
+)
+
+// A StringCombine combines multiple input values into a single string.
+type StringCombine struct {
+	// Format the input using a Go format string. See
+	// https://golang.org/pkg/fmt/ for details.
+	Format string `json:"fmt"`
+}
+
+// TransformType is type of the transform function to be chosen.
+type TransformType string
+
+// Accepted TransformTypes.
+const (
+	TransformTypeMap     TransformType = "map"
+	TransformTypeMath    TransformType = "math"
+	TransformTypeString  TransformType = "string"
+	TransformTypeConvert TransformType = "convert"
+)
+
+// Transform is a unit of process whose input is transformed into an output with
+// the supplied configuration.
+type Transform struct {
+
+	// Type of the transform to be run.
+	// +kubebuilder:validation:Enum=map;math;string;convert
+	Type TransformType `json:"type"`
+
+	// Math is used to transform the input via mathematical operations such as
+	// multiplication.
+	// +optional
+	Math *MathTransform `json:"math,omitempty"`
+
+	// Map uses the input as a key in the given map and returns the value.
+	// +optional
+	Map *MapTransform `json:"map,omitempty"`
+
+	// String is used to transform the input into a string or a different kind
+	// of string. Note that the input does not necessarily need to be a string.
+	// +optional
+	String *StringTransform `json:"string,omitempty"`
+
+	// Convert is used to cast the input into the given output type.
+	// +optional
+	Convert *ConvertTransform `json:"convert,omitempty"`
+}
+
+// MathTransform conducts mathematical operations on the input with the given
+// configuration in its properties.
+type MathTransform struct {
+	// Multiply the value.
+	// +optional
+	Multiply *int64 `json:"multiply,omitempty"`
+}
+
+// MapTransform returns a value for the input from the given map.
+type MapTransform struct {
+	// TODO(negz): Are Pairs really optional if a MapTransform was specified?
+
+	// Pairs is the map that will be used for transform.
+	// +optional
+	Pairs map[string]string `json:",inline"`
+}
+
+// A StringTransform returns a string given the supplied input.
+type StringTransform struct {
+	// Format the input using a Go format string. See
+	// https://golang.org/pkg/fmt/ for details.
+	Format string `json:"fmt"`
+}
+
+// A ConvertTransform converts the input into a new object whose type is supplied.
+type ConvertTransform struct {
+	// ToType is the type of the output of this transform.
+	// +kubebuilder:validation:Enum=string;int;int64;bool;float64
+	ToType string `json:"toType"`
+}
+
 // A ConnectionDetailType is a type of connection detail.
 type ConnectionDetailType string
 
@@ -186,33 +372,27 @@ type ConnectionDetail struct {
 	Value *string `json:"value,omitempty"`
 }
 
-// CompositionStatus shows the observed state of the composition.
-type CompositionStatus struct {
-	xpv1.ConditionedStatus `json:",inline"`
-}
-
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +genclient
 // +genclient:nonNamespaced
 
-// A Composition specifies how a composite resource should be composed.
+// A CompositionRevision represents a revision in time of a Composition.
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,categories=crossplane
-type Composition struct {
+type CompositionRevision struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   CompositionSpec   `json:"spec,omitempty"`
-	Status CompositionStatus `json:"status,omitempty"`
+	Spec CompositionRevisionSpec `json:"spec,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// CompositionList contains a list of Compositions.
-type CompositionList struct {
+// CompositionRevisionList contains a list of CompositionRevisions.
+type CompositionRevisionList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Composition `json:"items"`
+	Items           []CompositionRevision `json:"items"`
 }
