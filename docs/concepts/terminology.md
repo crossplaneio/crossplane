@@ -185,7 +185,8 @@ types. Therefore Pascal case is not appropriate.
 ### Configuration
 
 A configuration extends Crossplane by installing conceptually related groups of
-XRDs and Compositions. Put otherwise, it configures the opinionated platform API
+XRDs and Compositions, as well as dependencies like providers or further
+configurations. Put otherwise, it configures the opinionated platform API
 that Crossplane exposes.
 
 A `Configuration` is a distinct type in the Crossplane API, therefore Pascal
